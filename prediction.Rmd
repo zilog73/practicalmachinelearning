@@ -1,0 +1,125 @@
+---
+title: "Prediction of Weight Lifting Activity"
+author: "Berthold Allgeier"
+date: "19 December 2016"
+output: html_document
+---
+
+#1 Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#2 Data
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+#3 What to submit
+The goal of the  project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. Any of the other variables to predict with can be used. A report has to be creatd describing how the model is built, how cross validation was used, what is the expected out of sample error expected, and why made the choices done were made. The prediction model will be used to predict 20 different test cases.
+
+#3 Process and approach
+The process will start loading the required libraries. Then the data files for training and testing are loaded and cross-validation is performed. The data is then cleaned and preprocessed. Once this is done, some prediction models will be built and checked in order to selected the best approach. The selected one will be used to predict the 20 observations provided in the testing data file. 
+
+##3.1 Load Libraries and setting seed.
+The libraries needed are uploaded and a seed is set to ensure reproducibility.
+```{r, warning=FALSE, message=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rattle)
+set.seed(12345)
+```
+
+##3.2 Load data
+The training and testing files are loaded, replacing empty spaces and divisions by cero with NA values.
+```{r}
+training_file <- read.csv("pml-training.csv", na.strings=c("","#DIV/0!", "NA"))
+testing_file <- read.csv('pml-testing.csv', na.strings=c("","#DIV/0!", "NA"))
+```
+
+##3.3 Cross-validation
+Data slicing is used to perform cross-validation, allocating 75% of the training data to the training set and 25% to the testing set. 
+```{r}
+training_data <- createDataPartition(y=training_file$classe, p=0.75, list=FALSE)
+training_set <- training_file[training_data, ] 
+testing_set <- training_file[-training_data, ]
+dim(training_set)
+dim(testing_set)
+```
+
+##3.4 Clean data
+The data files have many variables and many NA values. The approach is section is to reduce, when possible, the number of variables. This can be one with variables that cannot treated as predictors and those with most of their values missing.
+
+The first 7 columns include an observation id (1), username (2), timestamps (3-5) and window information (6-7) that cannot be used as predictors so they are removed.
+```{r}
+training_set <- training_set[,-c(1:7)]
+testing_set <- testing_set[,-c(1:7)]
+testing_file <- testing_file[,-c(1:7)]
+```
+
+After calculation, 100 columns have all their values as NA so they are not considered for the prediction model.
+```{r}
+training_set<-training_set[,colSums(is.na(training_set)) == 0]
+testing_set <-testing_set[,colSums(is.na(testing_set)) == 0]
+testing_file <-testing_file[,colSums(is.na(testing_file)) == 0]
+
+dim(training_set) 
+dim(testing_set) 
+dim(testing_file) 
+```
+
+##3.5 Preprocess data
+All variables with low variance are also removed from the sets.
+```{r}
+nearzero_var <- nearZeroVar(training_set, saveMetrics=TRUE)
+training_set <- training_set[, nearzero_var$nzv == FALSE]
+```
+
+##3.6 Build model
+Three models for prediction will be tested: classification tree, random forest and boosting. 
+```{r}
+modelRP <- rpart(classe ~ ., data=training_set, method="class")
+fancyRpartPlot(modelRP)
+
+modelRF <- randomForest(classe ~ ., data=training_set, method="class")
+modelRF
+
+modelLB <- train(classe ~ ., data = training_set, method = "LogitBoost")
+print(modelLB)
+```
+
+##3.7 Check model
+The three models defined are now tested.
+```{r}
+predictionRP <- predict(modelRP, testing_set, type = "class")
+confusionMatrix(predictionRP, testing_set$classe)
+
+predictionRF <- predict(modelRF, testing_set, type = "class")
+confusionMatrix(predictionRF, testing_set$classe)
+
+predictionLB <- predict(modelLB, testing_set)
+confusionMatrix(predictionLB, testing_set$classe)
+```
+The best accuracy is provided by the random forest model, followed by boosting and classification tree. The random forest model will then be used for the final preciction. 
+
+##3.8 Predict test data
+The results of the prediction are diplayed.
+```{r}
+testing_file$classe <- predict(modelRF,testing_file)
+testing_file$classe
+```
+
+#5 Conclusion
+##5.1 Model building
+The three prediction models choosen are among the most popular ones, specially boosting and random forest.
+
+##5.2 Cross validation
+As the number of observations is big enough, cross-validation is done by splitting the training file into 75% for training data and 25% for testing data. 
+
+##5.3 Expected out of sample error 
+Out of Sample Error is the error rate you get on a new data set. The estimated expected value is then calculated as 1 - accuracy so according to the previous outcome the value would be (1 - 0.9949) so around 0.005%. 
